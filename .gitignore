@@ -1,4 +1,44 @@
+# Application logs
 derstandard_demo.log
+*.log
+
+# Virtual environment
+venv/
 venv
-__pycache__
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables and secrets
 .env
+.env.local
+.env.production
+
+# Streamlit secrets (DO NOT COMMIT)
+.streamlit/secrets.toml
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

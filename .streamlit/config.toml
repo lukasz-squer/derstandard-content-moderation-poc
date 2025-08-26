@@ -1,0 +1,25 @@
+[theme]
+# Optional: Set a custom theme for your app
+primaryColor = "#d41853"  # DER STANDARD red color
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f5"
+textColor = "#1a1a1a"
+
+[server]
+# Performance and deployment settings
+maxUploadSize = 200
+maxMessageSize = 200
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Streamlit Cloud deployment settings
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
+postScriptGC = true
+fastReruns = true
+enforceSerializableSessionState = false
