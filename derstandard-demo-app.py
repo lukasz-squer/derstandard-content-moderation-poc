@@ -415,20 +415,7 @@ def main():
             help="Verschiedene Modelle für Tests"
         )
         
-        st.divider()
-        st.header("📊 Session Statistiken")
-        if 'stats' not in st.session_state:
-            st.session_state.stats = {'total': 0, 'deleted': 0, 'approved': 0}
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Gelöscht", st.session_state.stats['deleted'])
-        with col2:
-            st.metric("Freigegeben", st.session_state.stats['approved'])
-        
-        if st.button("Statistiken zurücksetzen"):
-            st.session_state.stats = {'total': 0, 'deleted': 0, 'approved': 0}
-            st.session_state.history = []
+
     
     # Main Content Area
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Moderation", "📊 Analyse", "📚 Regeln", "⚙️ Regeln Konfiguration", "💾 Historie"])
@@ -552,13 +539,6 @@ def main():
                 result['question_analysis'] = question_analysis  # Füge die neue Analyse hinzu
                 
                 st.session_state.last_analysis = result
-                
-                # Update Statistics
-                st.session_state.stats['total'] += 1
-                if result['decision'] == 'LÖSCHEN':
-                    st.session_state.stats['deleted'] += 1
-                else:
-                    st.session_state.stats['approved'] += 1
                 
                 # Add to history
                 if 'history' not in st.session_state:
