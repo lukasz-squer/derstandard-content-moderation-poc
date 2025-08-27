@@ -115,20 +115,6 @@ def fetch_article(url: str) -> Dict[str, str]:
         else:
             content = "Artikelinhalt konnte nicht extrahiert werden."
         
-        # Log the extracted content to console
-        print("="*80)
-        print("EXTRACTED ARTICLE CONTENT:")
-        print("="*80)
-        print(f"Title: {title_text}")
-        print(f"URL: {url}")
-        print(f"Content length: {len(content)} characters")
-        print(f"Number of paragraphs: {len(paragraphs) if article_body else 0}")
-        print("-"*80)
-        print("FULL CONTENT:")
-        print("-"*80)
-        print(content)
-        print("="*80)
-        
         return {
             'title': title_text,
             'content': content,  # Vollständiger Artikelinhalt ohne Begrenzung
@@ -141,6 +127,107 @@ def fetch_article(url: str) -> Dict[str, str]:
             'content': f'Artikel konnte nicht geladen werden: {str(e)}',
             'url': url,
             'success': False
+        }
+
+def detect_question_or_reaction_expectation(
+    posting: str, 
+    article_title: str, 
+    article_content: str,
+    api_key: str,
+    model: str = "llama3-8b-8192"
+) -> Dict:
+    """Analysiert ob ein Posting Fragen stellt oder Reaktionen erwartet"""
+    
+    if not api_key:
+        return {
+            'has_questions': False,
+            'expects_reactions': False,
+            'target_audience': 'Unbekannt',
+            'explanation': 'Bitte API Key eingeben!',
+            'error': True
+        }
+    
+    try:
+        client = Groq(api_key=api_key)
+        
+        prompt = f"""Du bist ein Experte für Kommunikationsanalyse. Analysiere das folgende Posting darauf, ob der Autor:
+
+1. FRAGEN stellt (direkte oder indirekte Fragen)
+2. REAKTIONEN ERWARTET (Statements die eine Antwort/Diskussion provozieren sollen)
+
+ARTIKEL KONTEXT:
+Titel: {article_title}
+Inhalt: {article_content}
+
+POSTING ZU ANALYSIEREN:
+"{posting}"
+
+ANALYSIERE:
+- Enthält das Posting direkte Fragen? (Fragezeichen, W-Fragen, etc.)
+- Enthält das Posting indirekte Fragen oder rhetorische Fragen?
+- Macht der Autor Aussagen, die eine Reaktion erwarten?
+- An wen richtet sich der Autor? (Journalist, Redaktion, andere User, Politiker, etc.)
+
+BEISPIELE FÜR REAKTIONS-ERWARTENDE AUSSAGEN:
+- "Was sagt ihr dazu?"
+- "Wie seht ihr das?"
+- "Das kann doch nicht sein!"
+- "Wer hat sich das ausgedacht?"
+- Provokante Behauptungen
+- Direkte Kritik an Personen/Institutionen
+- Aufrufe zur Diskussion
+
+Antworte im JSON Format:
+{{
+    "has_questions": true/false,
+    "expects_reactions": true/false,
+    "target_audience": "Journalist/Redaktion/User/Politiker/Allgemein/Unbekannt",
+    "explanation": "Kurze deutsche Erklärung der Analyse",
+    "question_type": "Direkte Frage/Indirekte Frage/Rhetorische Frage/Keine",
+    "reaction_indicators": ["Liste von Indikatoren falls vorhanden"]
+}}"""
+
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=1000
+        )
+        
+        response_text = completion.choices[0].message.content
+        
+        # Parse JSON from response
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+            else:
+                result = json.loads(response_text)
+                
+            result['error'] = False
+            return result
+        except json.JSONDecodeError:
+            # Fallback wenn JSON parsing fehlschlägt
+            return {
+                'has_questions': '?' in posting,
+                'expects_reactions': True,
+                'target_audience': 'Unbekannt',
+                'explanation': 'JSON-Parsing fehlgeschlagen, Fallback-Analyse verwendet',
+                'question_type': 'Unbekannt',
+                'reaction_indicators': [],
+                'error': False
+            }
+            
+    except Exception as e:
+        return {
+            'has_questions': False,
+            'expects_reactions': False,
+            'target_audience': 'Unbekannt',
+            'explanation': f'Fehler bei der Analyse: {str(e)}',
+            'question_type': 'Fehler',
+            'reaction_indicators': [],
+            'error': True
         }
 
 def analyze_posting_with_llm(
@@ -439,6 +526,7 @@ def main():
             with st.spinner("🤖 KI analysiert Posting..."):
                 start_time = time.time()
                 
+                # Erste Analyse: Moderation
                 result = analyze_posting_with_llm(
                     posting_text,
                     st.session_state.article['title'],
@@ -447,10 +535,21 @@ def main():
                     model
                 )
                 
+                # Zweite Analyse: Fragen und Reaktions-Erwartung (separater LLM Call)
+                with st.spinner("🔍 Analysiere Fragen und Reaktions-Erwartung..."):
+                    question_analysis = detect_question_or_reaction_expectation(
+                        posting_text,
+                        st.session_state.article['title'],
+                        st.session_state.article['content'],
+                        api_key,
+                        model
+                    )
+                
                 analysis_time = time.time() - start_time
                 result['analysis_time'] = analysis_time
                 result['posting'] = posting_text
                 result['timestamp'] = datetime.now()
+                result['question_analysis'] = question_analysis  # Füge die neue Analyse hinzu
                 
                 st.session_state.last_analysis = result
                 
@@ -500,6 +599,50 @@ def main():
             # Begründung
             with st.expander("💭 **KI-Begründung**", expanded=True):
                 st.write(result.get('explanation', 'Keine Begründung verfügbar'))
+            
+            # Neue Analyse: Fragen und Reaktions-Erwartung
+            if 'question_analysis' in result and not result['question_analysis'].get('error', False):
+                qa = result['question_analysis']
+                
+                st.divider()
+                st.subheader("❓ Fragen & Reaktions-Erwartung")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Fragen-Status
+                    if qa.get('has_questions', False):
+                        st.success("✅ **Enthält Fragen**")
+                        question_type = qa.get('question_type', 'Unbekannt')
+                        if question_type != 'Keine':
+                            st.info(f"**Art:** {question_type}")
+                    else:
+                        st.info("ℹ️ **Keine Fragen erkannt**")
+                
+                with col2:
+                    # Reaktions-Erwartung
+                    if qa.get('expects_reactions', False):
+                        st.warning("⚠️ **Erwartet Reaktionen**")
+                        target = qa.get('target_audience', 'Unbekannt')
+                        if target != 'Unbekannt':
+                            st.info(f"**Zielgruppe:** {target}")
+                    else:
+                        st.info("ℹ️ **Erwartet keine Reaktionen**")
+                
+                # Reaktions-Indikatoren
+                if qa.get('reaction_indicators') and len(qa['reaction_indicators']) > 0:
+                    st.markdown("**Reaktions-Indikatoren:**")
+                    for indicator in qa['reaction_indicators']:
+                        st.markdown(f"• {indicator}")
+                
+                # Erklärung der Fragen-Analyse
+                with st.expander("💬 **Erklärung der Fragen-Analyse**"):
+                    st.write(qa.get('explanation', 'Keine Erklärung verfügbar'))
+            
+            elif 'question_analysis' in result and result['question_analysis'].get('error', False):
+                st.divider()
+                st.subheader("❓ Fragen & Reaktions-Erwartung")
+                st.error(f"❌ Fehler bei der Fragen-Analyse: {result['question_analysis'].get('explanation', 'Unbekannter Fehler')}")
             
             # Posting nochmal anzeigen
             with st.expander("📝 **Analysiertes Posting**"):
@@ -760,6 +903,7 @@ def main():
                             'confidence': h.get('confidence'),
                             'violated_rules': h.get('violated_rules'),
                             'explanation': h.get('explanation'),
+                            'question_analysis': h.get('question_analysis', {}),
                             'timestamp': h.get('timestamp').isoformat() if h.get('timestamp') else None
                         }
                         for h in st.session_state.history
@@ -790,6 +934,21 @@ def main():
                             st.write(f"**Regeln:** {', '.join(item['violated_rules'])}")
                         if item.get('timestamp'):
                             st.write(f"**Zeit:** {item['timestamp'].strftime('%H:%M:%S')}")
+                    
+                    # Fragen-Analyse anzeigen falls vorhanden
+                    if 'question_analysis' in item and not item['question_analysis'].get('error', False):
+                        qa = item['question_analysis']
+                        st.write("**Fragen-Analyse:**")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            has_q = "✅ Ja" if qa.get('has_questions', False) else "❌ Nein"
+                            st.write(f"Fragen: {has_q}")
+                        with col2:
+                            expects_r = "✅ Ja" if qa.get('expects_reactions', False) else "❌ Nein"
+                            st.write(f"Erwarte Reaktion: {expects_r}")
+                        
+                        if qa.get('target_audience', 'Unbekannt') != 'Unbekannt':
+                            st.write(f"Zielgruppe: {qa['target_audience']}")
                     
                     st.write("**Begründung:**")
                     st.text(item.get('explanation', 'Keine Begründung'))
