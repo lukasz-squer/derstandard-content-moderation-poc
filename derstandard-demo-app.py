@@ -99,7 +99,7 @@ def fetch_article(url: str) -> Dict[str, str]:
         }
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        
+
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # DER STANDARD spezifische Selektoren
@@ -108,15 +108,30 @@ def fetch_article(url: str) -> Dict[str, str]:
         
         # Artikel-Text extrahieren
         article_body = soup.find('div', {'class': 'article-body'}) or soup.find('article')
+
         if article_body:
             paragraphs = article_body.find_all('p')
-            content = '\n'.join([p.get_text(strip=True) for p in paragraphs[:5]])  # Erste 5 Paragraphen
+            content = '\n'.join([p.get_text(strip=True) for p in paragraphs])  # Alle Paragraphen
         else:
             content = "Artikelinhalt konnte nicht extrahiert werden."
         
+        # Log the extracted content to console
+        print("="*80)
+        print("EXTRACTED ARTICLE CONTENT:")
+        print("="*80)
+        print(f"Title: {title_text}")
+        print(f"URL: {url}")
+        print(f"Content length: {len(content)} characters")
+        print(f"Number of paragraphs: {len(paragraphs) if article_body else 0}")
+        print("-"*80)
+        print("FULL CONTENT:")
+        print("-"*80)
+        print(content)
+        print("="*80)
+        
         return {
             'title': title_text,
-            'content': content[:20000],  # Limitiere auf 1500 Zeichen für Demo
+            'content': content,  # Vollständiger Artikelinhalt ohne Begrenzung
             'url': url,
             'success': True
         }
@@ -161,7 +176,7 @@ FORENREGELN:
 
 ARTIKEL KONTEXT:
 Titel: {article_title}
-Inhalt-Auszug: {article_content[:500]}
+Inhalt: {article_content}
 
 POSTING ZU BEWERTEN:
 "{posting}"
@@ -171,7 +186,7 @@ AUFGABE:
 2. Bei LÖSCHEN: Welche Regel(n) wurden eindeutig und schwerwiegend verletzt?
 3. Gib eine Konfidenz-Score (0-100)
 4. Erkläre die Entscheidung ausführlich und begründe warum du tolerant/strikt warst
-5. Die Begründung sollte kurz und auf deutsch sein.
+5. Die Begründung sollte höchstens zwei Sätze lang und auf deutsch sein.
 
 Antworte im JSON Format:
 {{
@@ -214,7 +229,7 @@ Antworte im JSON Format:
                 'decision': 'LÖSCHEN' if 'LÖSCHEN' in response_text else 'FREISCHALTEN',
                 'confidence': 75,
                 'violated_rules': [],
-                'explanation': response_text[:200]
+                'explanation': response_text
             }
             
     except Exception as e:
@@ -309,7 +324,7 @@ def main():
         
         model = st.selectbox(
             "LLM Modell",
-            ["llama3-8b-8192", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"],
+            ["llama3-8b-8192", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"],
             help="Verschiedene Modelle für Tests"
         )
         
